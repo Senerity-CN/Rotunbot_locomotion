@@ -1,0 +1,225 @@
+<mujoco model="ball">
+  <compiler angle="radian"/>
+  
+  <worldbody>
+    <!-- Base Link -->
+    <body name="base_link" pos="0.0037683 0.023787 -0.0082655">
+      <inertial pos="0 0 0" mass="13.521" 
+                fullinertia="0.11723 2.1927e-05 -3.6693e-05 0.098929 0.00048745 0.10476"/>
+      
+      <!-- Base link geometry -->
+      <geom name="base_link_geom" type="cylinder" size="0.02 0.0025" 
+            rgba="0.79216 0.81961 0.93333 1"/>
+
+      <!-- Link1 - Connected via joint1 (continuous) -->
+      <body name="link1" pos="0 0 0">
+        <inertial pos="-0.0013958 -0.00011348 -0.00064553" mass="9.8965" 
+                  fullinertia="0.90515 -3.2487e-06 9.3421e-07 0.61757 0.00033978 0.61944"/>
+        
+        <joint name="joint1" type="hinge" pos="0 0 0" axis="1 0 0" 
+               damping="0.1" frictionloss="0.01"/>
+        
+        <!-- Spherical shell geometry -->
+        <geom name="link1_geom" type="sphere" size="0.4" 
+              rgba="0.79216 0.81961 0.93333 1"/>
+      </body>
+
+      <!-- Link2 - Connected via joint2 (revolute) -->
+      <body name="link2" pos="0 0 0">
+        <inertial pos="-0.00061655 -0.00964 -0.25497" mass="6.6648" 
+                  fullinertia="0.056287 1.0364e-05 -5.1516e-06 0.026608 6.2124e-06 0.068819"/>
+        
+        <joint name="joint2" type="hinge" pos="0 0 0" axis="0 1 -0.00011905" 
+               range="-0.5236 0.5236" damping="0.1" frictionloss="0.01"/>
+        
+        <!-- Internal mechanism geometry -->
+        <geom name="link2_geom" type="cylinder" size="0.02 0.0025" 
+              rgba="0.79216 0.81961 0.93333 1"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Actuators for the joints -->
+  <actuator>
+    <motor name="joint1_motor" joint="joint1" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+    <motor name="joint2_motor" joint="joint2" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+  </actuator>
+
+  <!-- Sensors for monitoring joint states -->
+  <sensor>
+    <jointpos name="joint1_pos" joint="joint1"/>
+    <jointvel name="joint1_vel" joint="joint1"/>
+    <jointpos name="joint2_pos" joint="joint2"/>
+    <jointvel name="joint2_vel" joint="joint2"/>
+  </sensor>
+
+</mujoco>
+      </body>
+
+      <!-- Link2 - Connected via joint2 (revolute) -->
+      <body name="link2" pos="0 0 0">
+        <inertial pos="-0.00061655 -0.00964 -0.25497" mass="6.6648" 
+                  diaginertia="0.056287 0.026608 0.068819"
+                  fullinertia="0.056287 1.0364e-05 -5.1516e-06 0.026608 6.2124e-06 0.068819"/>
+        
+        <joint name="joint2" type="hinge" pos="0 0 0" axis="0 1 -0.00011905" 
+               range="-0.5236 0.5236" damping="0.1" frictionloss="0.01"/>
+        
+        <!-- Internal mechanism geometry -->
+        <geom name="link2_geom" type="cylinder" size="0.02 0.0025" 
+              rgba="0.79216 0.81961 0.93333 1"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Actuators for the joints -->
+  <actuator>
+    <motor name="joint1_motor" joint="joint1" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+    <motor name="joint2_motor" joint="joint2" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+  </actuator>
+
+  <!-- Sensors for monitoring joint states -->
+  <sensor>
+    <jointpos name="joint1_pos" joint="joint1"/>
+    <jointvel name="joint1_vel" joint="joint1"/>
+    <jointpos name="joint2_pos" joint="joint2"/>
+    <jointvel name="joint2_vel" joint="joint2"/>
+  </sensor>
+
+</mujoco>
+  </asset>
+
+  <worldbody>
+    <!-- Base Link -->
+    <body name="base_link" pos="0.0037683 0.023787 -0.0082655">
+      <inertial pos="0 0 0" mass="13.521" 
+                diaginertia="0.11723 0.098929 0.10476"
+                fullinertia="0.11723 2.1927e-05 -3.6693e-05 0.098929 0.00048745 0.10476"/>
+      
+      <!-- 使用基本几何体替代mesh -->
+      <geom name="base_link_geom" type="cylinder" size="0.02 0.0025" 
+            rgba="0.79216 0.81961 0.93333 1"/>
+
+      <!-- Link1 - Connected via joint1 (continuous) -->
+      <body name="link1" pos="0 0 0">
+        <inertial pos="-0.0013958 -0.00011348 -0.00064553" mass="9.8965" 
+                  diaginertia="0.90515 0.61757 0.61944"
+                  fullinertia="0.90515 -3.2487e-06 9.3421e-07 0.61757 0.00033978 0.61944"/>
+        
+        <joint name="joint1" type="hinge" pos="0 0 0" axis="1 0 0" 
+               damping="0.1" frictionloss="0.01"/>
+        
+        <!-- 使用球体几何体 -->
+        <geom name="link1_geom" type="sphere" size="0.4" 
+              rgba="0.79216 0.81961 0.93333 1"/>
+      </body>
+
+      <!-- Link2 - Connected via joint2 (revolute) -->
+      <body name="link2" pos="0 0 0">
+        <inertial pos="-0.00061655 -0.00964 -0.25497" mass="6.6648" 
+                  diaginertia="0.056287 0.026608 0.068819"
+                  fullinertia="0.056287 1.0364e-05 -5.1516e-06 0.026608 6.2124e-06 0.068819"/>
+        
+        <joint name="joint2" type="hinge" pos="0 0 0" axis="0 1 -0.00011905" 
+               range="-0.5236 0.5236" damping="0.1" frictionloss="0.01"/>
+        
+        <!-- 使用圆柱体几何体 -->
+        <geom name="link2_geom" type="cylinder" size="0.02 0.0025" 
+              rgba="0.79216 0.81961 0.93333 1"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Actuators for the joints -->
+  <actuator>
+    <motor name="joint1_motor" joint="joint1" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+    <motor name="joint2_motor" joint="joint2" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+  </actuator>
+
+  <!-- Sensors (optional, for monitoring joint states) -->
+  <sensor>
+    <jointpos name="joint1_pos" joint="joint1"/>
+    <jointvel name="joint1_vel" joint="joint1"/>
+    <jointpos name="joint2_pos" joint="joint2"/>
+    <jointvel name="joint2_vel" joint="joint2"/>
+  </sensor>
+
+</mujoco>
+  </asset>
+
+  <worldbody>
+    <!-- Base Link -->
+    <body name="base_link" pos="0.0037683 0.023787 -0.0082655">
+      <inertial pos="0 0 0" mass="13.521" 
+                diaginertia="0.11723 0.098929 0.10476"
+                fullinertia="0.11723 2.1927e-05 -3.6693e-05 0.098929 0.00048745 0.10476"/>
+      
+      <!-- Visual geometry using mesh -->
+      <geom name="base_link_visual" type="mesh" mesh="base_link_mesh" 
+            rgba="0.79216 0.81961 0.93333 1" contype="0" conaffinity="0"/>
+      
+      <!-- Collision geometry -->
+      <geom name="base_link_collision" type="cylinder" size="0.02 0.0025" 
+            rgba="0.79216 0.81961 0.93333 0.5"/>
+
+      <!-- Link1 - Connected via joint1 (continuous) -->
+      <body name="link1" pos="0 0 0">
+        <inertial pos="-0.0013958 -0.00011348 -0.00064553" mass="9.8965" 
+                  diaginertia="0.90515 0.61757 0.61944"
+                  fullinertia="0.90515 -3.2487e-06 9.3421e-07 0.61757 0.00033978 0.61944"/>
+        
+        <joint name="joint1" type="hinge" pos="0 0 0" axis="1 0 0" 
+               damping="0.1" frictionloss="0.01"/>
+        
+        <!-- Visual geometry using mesh -->
+        <geom name="link1_visual" type="mesh" mesh="link1_mesh" 
+              rgba="0.79216 0.81961 0.93333 1" contype="0" conaffinity="0"/>
+        
+        <!-- Collision geometry -->
+        <geom name="link1_collision" type="sphere" size="0.4" 
+              rgba="0.79216 0.81961 0.93333 0.5"/>
+      </body>
+
+      <!-- Link2 - Connected via joint2 (revolute) -->
+      <body name="link2" pos="0 0 0">
+        <inertial pos="-0.00061655 -0.00964 -0.25497" mass="6.6648" 
+                  diaginertia="0.056287 0.026608 0.068819"
+                  fullinertia="0.056287 1.0364e-05 -5.1516e-06 0.026608 6.2124e-06 0.068819"/>
+        
+        <joint name="joint2" type="hinge" pos="0 0 0" axis="0 1 -0.00011905" 
+               range="-0.5236 0.5236" damping="0.1" frictionloss="0.01"/>
+        
+        <!-- Visual geometry using mesh -->
+        <geom name="link2_visual" type="mesh" mesh="link2_mesh" 
+              rgba="0.79216 0.81961 0.93333 1" contype="0" conaffinity="0"/>
+        
+        <!-- Collision geometry -->
+        <geom name="link2_collision" type="cylinder" size="0.02 0.0025" 
+              rgba="0.79216 0.81961 0.93333 0.5"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Actuators for the joints -->
+  <actuator>
+    <motor name="joint1_motor" joint="joint1" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+    <motor name="joint2_motor" joint="joint2" gear="1" ctrllimited="true" ctrlrange="-12 12"/>
+  </actuator>
+
+  <!-- Sensors (optional, for monitoring joint states) -->
+  <sensor>
+    <jointpos name="joint1_pos" joint="joint1"/>
+    <jointvel name="joint1_vel" joint="joint1"/>
+    <jointpos name="joint2_pos" joint="joint2"/>
+    <jointvel name="joint2_vel" joint="joint2"/>
+  </sensor>
+
+</mujoco>
+    </body>
+    <body name="link2">
+      <inertial pos="-0.00061655 -0.00964 -0.25497" quat="0.499847 0.499948 -0.499979 0.500227" mass="6.6648" diaginertia="0.068819 0.056287 0.026608"/>
+      <joint name="joint2" pos="0 0 0" axis="0 1 -0.00011905" range="-0.5236 0.5236" actuatorfrcrange="-12 12"/>
+      <geom size="0.02 0.0025" type="cylinder" rgba="0.79216 0.81961 0.93333 1"/>
+    </body>
+  </worldbody>
+</mujoco>
