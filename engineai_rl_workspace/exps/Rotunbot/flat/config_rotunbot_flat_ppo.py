@@ -8,7 +8,7 @@ class ConfigRotunbotFlatPpo(ConfigPpo):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 24
-        max_iterations = 1500
+        max_iterations = 800  # 使用源仓库的迭代次数
         # logging
         save_interval = 50
         experiment_name = 'rotunbot_flat'
@@ -19,9 +19,9 @@ class ConfigRotunbotFlatPpo(ConfigPpo):
         checkpoint = -1
 
     class policy(ConfigPpo.policy):
-        init_noise_std = 1.0
-        actor_hidden_dims = [512, 256, 128]
-        critic_hidden_dims = [512, 256, 128]
+        init_noise_std = 0.2  # 使用源仓库的初始噪声值
+        actor_hidden_dims = [256, 128, 64]  # 使用源仓库的网络结构
+        critic_hidden_dims = [256, 128, 64]  # 使用源仓库的网络结构
         activation = 'elu'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
 
     class algorithm(ConfigPpo.algorithm):
