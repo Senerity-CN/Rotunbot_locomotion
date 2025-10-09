@@ -173,39 +173,60 @@ class SphericalRobot(EnvBase):
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
 
         # Initialize other buffers
-        self.commands = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device)
-        self.commands_scale = torch.tensor(
-            [self.command_x_range[1] - self.command_x_range[0],
-             self.command_y_range[1] - self.command_y_range[0],
-             self.command_yaw_range[1] - self.command_yaw_range[0]],
-            device=self.device
-        )
+        self.commands = torch.zeros(self.num_envs, 2, dtype=torch.float, device=self.device)
+        self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device)
+        self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device)
+        self.torques = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device)
+        self.last_dof_vel = torch.zeros_like(self.dof_vel)
+        self.last_dof_pos = torch.zeros_like(self.dof_pos)
 
-        # Initialize pendulum-specific buffers
-        self.pendulum_angle = torch.zeros(self.num_envs, 2, dtype=torch.float, device=self.device)
-        self.pendulum_angular_vel = torch.zeros(self.num_envs, 2, dtype=torch.float, device=self.device)
+        # Initialize PD gains
+        self.p_gains = torch.zeros(self.num_dof, dtype=torch.float, device=self.device)
+        self.d_gains = torch.zeros(self.num_dof, dtype=torch.float, device=self.device)
+        
+        # Set PD gains from config
+        for i, joint_name in enumerate(self.cfg.env.action_joints):
+            self.p_gains[i] = self.cfg.control.stiffness.get(joint_name, 0.0)
+            self.d_gains[i] = self.cfg.control.damping.get(joint_name, 0.0)
+
+        # Initialize base state
+        self.base_init_state = torch.zeros(self.num_envs, 13, dtype=torch.float, device=self.device)
+        self.base_init_state[:, :3] = to_torch(self.cfg.init_state.pos, device=self.device)
+        self.base_init_state[:, 3:7] = to_torch(self.cfg.init_state.rot, device=self.device)
+        self.base_init_state[:, 7:10] = to_torch(self.cfg.init_state.lin_vel, device=self.device)
+        self.base_init_state[:, 10:13] = to_torch(self.cfg.init_state.ang_vel, device=self.device)
+
+        # Initialize default dof positions
+        self.default_dof_pos = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device)
+        for i, joint_name in enumerate(self.cfg.env.action_joints):
+            self.default_dof_pos[:, i] = self.cfg.init_state.default_joint_angles.get(joint_name, 0.0)
+
+        # Initialize other variables
+        self.common_step_counter = 0
+        self.extras = {}
+        self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
+        self.gravity_vec = to_torch([0., 0., -1.], device=self.device).repeat((self.num_envs, 1))
 
     def compute_observations(self):
         """Compute observations for the policy."""
-        # Update pendulum state from dof positions and velocities
-        self.pendulum_angle = self.dof_pos.clone()
-        self.pendulum_angular_vel = self.dof_vel.clone()
-
         # Get base velocity in base frame
         self.base_quat = self.root_states[:, 3:7]
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
 
         # Project gravity to base frame
-        gravity_vec = to_torch([0., 0., -1.], device=self.device).repeat((self.num_envs, 1))
-        self.projected_gravity = quat_rotate_inverse(self.base_quat, gravity_vec)
+        self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
 
         # Create observation dictionary
         obs_dict = {
-            "pendulum_angle": self.pendulum_angle,
-            "pendulum_angular_vel": self.pendulum_angular_vel,
+            "commands": self.commands,
+            "base_quat": self.base_quat,
             "base_lin_vel": self.base_lin_vel,
             "base_ang_vel": self.base_ang_vel,
+            "last_base_lin_vel": self.last_base_lin_vel,
+            "last_base_ang_vel": self.last_base_ang_vel,
+            "dof_pos": self.dof_pos,
+            "dof_vel": self.dof_vel,
             "projected_gravity": self.projected_gravity,
             "actions": self.actions,
         }
@@ -215,14 +236,16 @@ class SphericalRobot(EnvBase):
     def compute_reward(self):
         """Compute reward for current step."""
         # This will be implemented in the reward class
-        pass
+        reward = self.rewards.compute_reward()
+        self.rew_buf = reward
+        return reward
 
     def reset_idx(self, env_ids):
         """Reset environments."""
         if len(env_ids) == 0:
             return
 
-        # Reset pendulum positions
+        # Reset dof positions and velocities
         positions = torch_rand_float(
             self.cfg.init_state.default_joint_angles["joint1"] - 0.1,
             self.cfg.init_state.default_joint_angles["joint1"] + 0.1,
@@ -262,7 +285,7 @@ class SphericalRobot(EnvBase):
         )
 
         # Reset root states
-        self.root_states[env_ids] = self.base_init_state
+        self.root_states[env_ids] = self.base_init_state[env_ids]
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,
@@ -274,6 +297,15 @@ class SphericalRobot(EnvBase):
         # Resample commands
         self._resample_commands(env_ids)
 
+        # Reset buffers
+        self.last_actions[env_ids] = 0.
+        self.last_dof_vel[env_ids] = 0.
+        self.last_dof_pos[env_ids] = 0.
+        self.last_base_lin_vel[env_ids] = 0.
+        self.last_base_ang_vel[env_ids] = 0.
+        self.episode_length_buf[env_ids] = 0
+        self.reset_buf[env_ids] = False
+
     def _resample_commands(self, env_ids):
         """Resample movement commands."""
         # Sample linear velocity commands
@@ -281,31 +313,56 @@ class SphericalRobot(EnvBase):
             self.command_x_range[0], self.command_x_range[1], (len(env_ids), 1), device=self.device
         ).squeeze()
 
-        self.commands[env_ids, 1] = torch_rand_float(
-            self.command_y_range[0], self.command_y_range[1], (len(env_ids), 1), device=self.device
-        ).squeeze()
-
         # Sample angular velocity commands
-        self.commands[env_ids, 2] = torch_rand_float(
+        self.commands[env_ids, 1] = torch_rand_float(
             self.command_yaw_range[0], self.command_yaw_range[1], (len(env_ids), 1), device=self.device
         ).squeeze()
 
     def pre_physics_step(self, actions):
         """Process actions before physics step."""
+        # Store last states
+        self.last_actions = self.actions.clone()
+        self.last_dof_vel = self.dof_vel.clone()
+        self.last_dof_pos = self.dof_pos.clone()
+        self.last_base_lin_vel = self.base_lin_vel.clone()
+        self.last_base_ang_vel = self.base_ang_vel.clone()
+
         # Scale actions
         self.actions = actions * self.cfg.control.action_scale
 
+        # Compute torques based on control type
+        self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+
         # Apply forces to joints
-        forces = torch.zeros((self.num_envs, self.num_dof), dtype=torch.float, device=self.device)
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
 
-        # Apply force to joint1 (forward/backward motion)
-        forces[:, 0] = self.actions[:, 0] * 10.0  # Scale factor for force
+    def _compute_torques(self, actions):
+        """Compute torques from actions using P and V control.
 
-        # Apply force to joint2 (steering)
-        forces[:, 1] = self.actions[:, 1] * 5.0   # Scale factor for steering force
+        Args:
+            actions (torch.Tensor): Actions
 
-        # Apply forces
-        self.gym.apply_actor_dof_efforts(self.envs, self.actor_handles, forces)
+        Returns:
+            torch.Tensor: Torques sent to the simulation
+        """
+        control_type = self.cfg.control.control_type
+        if control_type == "P":
+            torques = self.p_gains * (actions + self.default_dof_pos - self.dof_pos) - self.d_gains * self.dof_vel
+        elif control_type == "V":
+            torques = self.p_gains * (actions - self.dof_vel) - self.d_gains * (self.dof_vel - self.last_dof_vel) / self.sim_params.dt
+        elif control_type == "T":
+            torques = actions
+        elif control_type == "P and V":
+            actions_scaled = torch.zeros_like(actions)  # 或者 actions.clone()
+            actions_scaled[:, 0] = actions[:, 0] * self.cfg.control.first_actionScale
+            actions_scaled[:, 1] = actions[:, 1] * self.cfg.control.second_actionScale
+
+            torques = torch.zeros_like(self.dof_pos)
+            torques[:, 0] = self.p_gains[0] * (actions_scaled[:, 0] - self.dof_vel[:, 0]) - self.d_gains[0] * (self.dof_vel[:, 0] - self.last_dof_vel[:, 0]) / self.sim_params.dt
+            torques[:, 1] = self.p_gains[1] * (actions_scaled[:, 1] + self.default_dof_pos[:, 1] - self.dof_pos[:, 1]) - self.d_gains[1] * self.dof_vel[:, 1]
+        else:
+            raise NameError(f"Unknown controller type: {control_type}")
+        return torch.clip(torques, -self.cfg.normalization.clip_actions, self.cfg.normalization.clip_actions)
 
     def post_physics_step(self):
         """Process after physics step."""
@@ -319,10 +376,43 @@ class SphericalRobot(EnvBase):
         self.common_step_counter += 1
 
         # Compute observations, rewards, and check termination
-        self.compute_observations()
+        self.obs_dict = self.compute_observations()
         self.compute_reward()
         self.check_termination()
 
         # Reset environments if needed
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
+
+    def check_termination(self):
+        """Check if environments need to be reset."""
+        # Reset if episode length is exceeded
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length
+        self.reset_buf |= self.time_out_buf
+
+        # Reset if robot falls (z position too low)
+        self.reset_buf |= (self.root_states[:, 2] < 0.2)
+
+    def _get_noise_scale_vec(self, cfg):
+        """Sets a vector used to scale the noise added to the observations.
+
+        Args:
+            cfg (Dict): Environment config file
+
+        Returns:
+            torch.Tensor: Vector of scales used to multiply a uniform distribution in [-1, 1]
+        """
+        noise_vec = torch.zeros(self.cfg.env.num_observations, dtype=torch.float, device=self.device)
+        self.add_noise = self.cfg.noise.add_noise
+        noise_scales = self.cfg.noise.noise_scales
+        noise_level = self.cfg.noise.noise_level
+        noise_vec[:2] = 0.  # commands
+        noise_vec[2:6] = noise_scales.quat * noise_level
+        noise_vec[6:9] = noise_scales.lin_vel * noise_level
+        noise_vec[9:12] = noise_scales.ang_vel * noise_level
+        noise_vec[12:15] = noise_scales.lin_vel * noise_level
+        noise_vec[15:18] = noise_scales.ang_vel * noise_level
+        noise_vec[18:19] = noise_scales.dof_pos * noise_level
+        noise_vec[19:21] = noise_scales.dof_vel * noise_level
+        noise_vec[21:26] = 0.  # previous actions
+        return noise_vec
