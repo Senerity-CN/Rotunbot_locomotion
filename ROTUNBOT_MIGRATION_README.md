@@ -184,4 +184,4 @@ python test_config_loading.py
 
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
-export LD_LIBRARY_PATH=/home/shanxiang/miniconda3/envs/rl_ws/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/balance/anaconda3/envs/egrl/lib:$LD_LIBRARY_PATH

@@ -102,7 +102,7 @@ class ConfigRotunbot(ConfigLeggedRobot):
             ang_vel_yaw = [-0.5, 0.5]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
-    class domain_rand(ConfigLeggedRobot.domain_rand):
+    class domain_rand(ConfigLeggedRobot.domain_rands):
         randomize_base_mass = True
         added_mass_range = [-8., 8.]
         randomize_link_mass = True

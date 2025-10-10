@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 import os
-import torch
 from isaacgym import gymapi, gymutil
+import torch
 
 def test_model_loading():
     # 初始化gym
-    gym = gymapi.Gym()
+    gym = gymapi.acquire_gym()
     
     # 创建仿真参数
     sim_params = gymapi.SimParams()
