@@ -172,3 +172,12 @@ class ConfigRotunbot(ConfigLeggedRobot):
         bounding_box_link_ids = []
         # Which links to consider for termination
         termination_contact_indices = [0]  # base_link index
+        
+        # Asset properties for Isaac Gym
+        density = 0.001
+        angular_damping = 0.0
+        linear_damping = 0.0
+        max_angular_velocity = 1000.0
+        max_linear_velocity = 1000.0
+        armature = 0.0
+        thickness = 0.01

@@ -96,7 +96,6 @@ class SphericalRobot(EnvBase):
         asset_options = gymapi.AssetOptions()
         asset_options.default_dof_drive_mode = gymapi.DOF_MODE_EFFORT
         asset_options.collapse_fixed_joints = self.cfg.asset.collapse_fixed_joints
-        asset_options.replace_base_link = self.cfg.asset.replace_base_link
         asset_options.flip_visual_attachments = self.cfg.asset.flip_visual_attachments
         asset_options.density = self.cfg.asset.density
         asset_options.angular_damping = self.cfg.asset.angular_damping
