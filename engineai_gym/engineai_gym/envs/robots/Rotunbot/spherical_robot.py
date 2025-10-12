@@ -107,7 +107,9 @@ class SphericalRobot(EnvBase):
         asset_options.disable_gravity = self.cfg.asset.disable_gravity
 
         # Load robot asset
-        robot_asset = self.gym.load_asset(self.sim, self.asset_file, asset_options)
+        asset_root = os.path.dirname(self.asset_file)
+        asset_file = os.path.basename(self.asset_file)
+        robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
 
         # Get asset information
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
@@ -139,8 +141,13 @@ class SphericalRobot(EnvBase):
                                       for name in self.cfg.env.action_joints])
             default_dof_pos = to_torch(default_dof_pos, device=self.device)
 
+            # Create DofState array for set_actor_dof_states
+            num_dof = len(self.cfg.env.action_joints)
+            dof_state = np.zeros(num_dof, dtype=gymapi.DofState.dtype)
+            dof_state[:]['pos'] = default_dof_pos.cpu().numpy()
+
             # Set actor dof states
-            self.gym.set_actor_dof_states(env_ptr, actor_handle, default_dof_pos, gymapi.STATE_ALL)
+            self.gym.set_actor_dof_states(env_ptr, actor_handle, dof_state, gymapi.STATE_ALL)
 
             # Add environment to list
             self.envs.append(env_ptr)
