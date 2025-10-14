@@ -54,6 +54,15 @@ class SphericalRobot(EnvBase):
             headless,
         )
 
+        # Initialize buffers after simulation is created
+        self._init_buffers()
+        
+        # Create action_scales property for compatibility with wrappers
+        self.action_scales = {
+            "joint1": self.cfg.control.first_actionScale,
+            "joint2": self.cfg.control.second_actionScale
+        }
+
     def _parse_cfg(self):
         """Parse configuration parameters."""
         # Initialize command ranges
@@ -152,9 +161,6 @@ class SphericalRobot(EnvBase):
             # Add environment to list
             self.envs.append(env_ptr)
 
-        # Initialize buffers
-        self._init_buffers()
-
     def _init_buffers(self):
         """Initialize tensor buffers."""
         # Get gym state tensors
@@ -215,17 +221,20 @@ class SphericalRobot(EnvBase):
         self.extras = {}
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch([0., 0., -1.], device=self.device).repeat((self.num_envs, 1))
-
-    def compute_observations(self):
-        """Compute observations for the policy."""
-        # Get base velocity in base frame
+        
+        # Initialize base velocity and other required attributes
         self.base_quat = self.root_states[:, 3:7]
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-
-        # Project gravity to base frame
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        
+        # Initialize last state variables for observations
+        self.last_base_lin_vel = torch.zeros_like(self.base_lin_vel, device=self.device)
+        self.last_base_ang_vel = torch.zeros_like(self.base_ang_vel, device=self.device)
+        self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13], device=self.device)
 
+    def compute_observations(self):
+        """Compute observations for the policy."""
         # Create observation dictionary
         obs_dict = {
             "commands": self.commands,
@@ -380,6 +389,12 @@ class SphericalRobot(EnvBase):
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
 
+        # Update base velocities and other state variables
+        self.base_quat = self.root_states[:, 3:7]
+        self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
+        self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        
         # Update episode buffers
         self.episode_length_buf += 1
         self.common_step_counter += 1
