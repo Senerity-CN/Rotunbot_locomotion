@@ -123,6 +123,7 @@ class SphericalRobot(EnvBase):
         # Get asset information
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
+        self.dof_names = self.gym.get_asset_dof_names(robot_asset)
 
         # Prepare environment creation
         env_lower = gymapi.Vec3(-self.cfg.env.env_spacing, -self.cfg.env.env_spacing, 0.0)
@@ -232,6 +233,18 @@ class SphericalRobot(EnvBase):
         self.last_base_lin_vel = torch.zeros_like(self.base_lin_vel, device=self.device)
         self.last_base_ang_vel = torch.zeros_like(self.base_ang_vel, device=self.device)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13], device=self.device)
+        
+        # Initialize DOF limits (needed by wrappers)
+        dof_props = self.gym.get_actor_dof_properties(self.envs[0], self.actor_handles[0])
+        self.dof_pos_limits = torch.zeros(self.num_dof, 2, dtype=torch.float, device=self.device)
+        self.dof_vel_limits = torch.zeros(self.num_dof, dtype=torch.float, device=self.device)
+        self.torque_limits = torch.zeros(self.num_dof, dtype=torch.float, device=self.device)
+        
+        for i in range(self.num_dof):
+            self.dof_pos_limits[i, 0] = dof_props["lower"][i].item()
+            self.dof_pos_limits[i, 1] = dof_props["upper"][i].item()
+            self.dof_vel_limits[i] = dof_props["velocity"][i].item()
+            self.torque_limits[i] = dof_props["effort"][i].item()
 
     def compute_observations(self):
         """Compute observations for the policy."""
