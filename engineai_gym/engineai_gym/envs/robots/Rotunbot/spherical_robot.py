@@ -69,6 +69,33 @@ class SphericalRobot(EnvBase):
         self.command_x_range = self.cfg.commands.ranges.lin_vel_x
         self.command_y_range = self.cfg.commands.ranges.lin_vel_y
         self.command_yaw_range = self.cfg.commands.ranges.ang_vel_yaw
+        
+        # Initialize time step
+        self.dt = self.cfg.control.decimation * self.sim_params.dt
+        
+        # Initialize observation scales
+        self.obs_scales = {}
+        for obs_name in self.cfg.env.obs_list:
+            if isinstance(self.cfg.normalization.obs_scales.get(obs_name, 1), dict):
+                obs_scales_tensor = torch.zeros(
+                    self.num_dof, device=self.device, dtype=torch.float
+                )
+                for idx, joint_name in enumerate(self.dof_names):
+                    for (
+                        joint_type,
+                        obs_scale,
+                    ) in self.cfg.normalization.obs_scales.get(obs_name).items():
+                        if joint_type in joint_name:
+                            obs_scales_tensor[idx] = obs_scale
+                self.obs_scales[obs_name] = obs_scales_tensor
+            else:
+                self.obs_scales[obs_name] = self.cfg.normalization.obs_scales.get(
+                    obs_name, 1
+                )
+        
+        # Initialize episode length
+        self.max_episode_length_s = self.cfg.env.episode_length_s
+        self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
 
         # Store asset path
         self.asset_file = self.cfg.asset.file.format(
@@ -161,6 +188,13 @@ class SphericalRobot(EnvBase):
 
             # Add environment to list
             self.envs.append(env_ptr)
+        
+        # Initialize foot indices (needed by wrappers)
+        # For spherical robot, we use link1 as the foot
+        self.foot_indices = torch.zeros(1, dtype=torch.long, device=self.device)
+        self.foot_indices[0] = self.gym.find_actor_rigid_body_handle(
+            self.envs[0], self.actor_handles[0], "link1"
+        )
 
     def _init_buffers(self):
         """Initialize tensor buffers."""
@@ -245,6 +279,10 @@ class SphericalRobot(EnvBase):
             self.dof_pos_limits[i, 1] = dof_props["upper"][i].item()
             self.dof_vel_limits[i] = dof_props["velocity"][i].item()
             self.torque_limits[i] = dof_props["effort"][i].item()
+            
+        # Initialize dictionaries (needed by wrappers)
+        self.obs_dict = {}
+        self.goal_dict = {}
 
     def compute_observations(self):
         """Compute observations for the policy."""
