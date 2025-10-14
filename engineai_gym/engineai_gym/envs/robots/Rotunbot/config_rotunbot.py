@@ -5,7 +5,7 @@ class ConfigRotunbot(ConfigLeggedRobot):
     """Configuration class for the Rotunbot spherical robot."""
 
     class env(ConfigLeggedRobot.env):
-        num_envs = 4096
+        num_envs = 64
         num_actions = 2
         num_observations = 26
         episode_length_s = 40  # episode length in seconds

@@ -170,9 +170,12 @@ class SphericalRobot(EnvBase):
         # Create tensor wrappers
         self.root_states = gymtorch.wrap_tensor(actor_root_state)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_force_tensor).view(
-            self.num_envs, -1, 3
-        )
+        # Ensure the contact forces tensor has the correct shape
+        contact_force_tensor = gymtorch.wrap_tensor(net_contact_force_tensor)
+        if contact_force_tensor.numel() > 0:
+            self.contact_forces = contact_force_tensor.view(self.num_envs, -1, 3)
+        else:
+            self.contact_forces = torch.zeros(self.num_envs, 1, 3, dtype=torch.float, device=self.device)
 
         # Split dof state
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
@@ -183,8 +186,8 @@ class SphericalRobot(EnvBase):
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device)
         self.torques = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device)
-        self.last_dof_vel = torch.zeros_like(self.dof_vel)
-        self.last_dof_pos = torch.zeros_like(self.dof_pos)
+        self.last_dof_vel = torch.zeros_like(self.dof_vel, device=self.device)
+        self.last_dof_pos = torch.zeros_like(self.dof_pos, device=self.device)
 
         # Initialize PD gains
         self.p_gains = torch.zeros(self.num_dof, dtype=torch.float, device=self.device)

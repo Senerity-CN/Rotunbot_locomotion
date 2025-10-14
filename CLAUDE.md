@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Development Environment Note
+
+IMPORTANT: This project uses Isaac Gym which only runs on Linux with NVIDIA GPUs. Development can be done on macOS, but testing and execution must be performed on a Linux machine with NVIDIA GPU. Code changes should be synced to the Linux machine for testing.
+
 ## Project Overview
 
 This is the EngineAI RL Workspace, a versatile and universal RL framework for legged robots. It includes environment, training, and evaluation components for RL algorithms with a modular design for extensibility.
