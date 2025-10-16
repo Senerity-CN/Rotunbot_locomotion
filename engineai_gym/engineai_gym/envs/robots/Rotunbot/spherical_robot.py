@@ -148,7 +148,12 @@ class SphericalRobot(EnvBase):
             # Set initial pose
             start_pose = gymapi.Transform()
             start_pose.p = gymapi.Vec3(*self.cfg.init_state.pos)
-            start_pose.r = gymapi.Quat(*self.cfg.init_state.rot)
+            # Normalize quaternion to ensure valid rotation
+            rot_quat = self.cfg.init_state.rot
+            rot_norm = np.linalg.norm(rot_quat)
+            if rot_norm > 0:
+                rot_quat = [q / rot_norm for q in rot_quat]
+            start_pose.r = gymapi.Quat(*rot_quat)
 
             # Create actor
             actor_handle = self.gym.create_actor(env_ptr, robot_asset, start_pose, "rotunbot", i, 0, 0)
@@ -413,6 +418,8 @@ class SphericalRobot(EnvBase):
 
         # Reset root states
         self.root_states[env_ids] = self.base_init_state[env_ids]
+        # Ensure proper rotation quaternion normalization
+        self.root_states[env_ids, 3:7] = self.root_states[env_ids, 3:7] / torch.norm(self.root_states[env_ids, 3:7], dim=1, keepdim=True)
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,
