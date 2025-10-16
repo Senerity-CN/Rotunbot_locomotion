@@ -73,47 +73,6 @@ class SphericalRobot(EnvBase):
         # Initialize time step
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         
-        # Initialize observation scales
-        self.obs_scales = {}
-        for obs_name in self.cfg.env.obs_list:
-            # Handle the case where obs_scales is a class instead of a dict
-            if hasattr(self.cfg.normalization.obs_scales, '__dict__'):
-                # It's a class, get the attribute directly
-                if hasattr(self.cfg.normalization.obs_scales, obs_name):
-                    obs_scale_value = getattr(self.cfg.normalization.obs_scales, obs_name)
-                    if isinstance(obs_scale_value, list):
-                        obs_scales_tensor = torch.zeros(
-                            self.num_dof, device=self.device, dtype=torch.float
-                        )
-                        # For list values, we need to map them to joints
-                        for idx, joint_name in enumerate(self.dof_names):
-                            # Simple mapping: use the first value for all joints for now
-                            # You might want to customize this mapping based on your needs
-                            obs_scales_tensor[idx] = obs_scale_value[0] if obs_scale_value else 1.0
-                        self.obs_scales[obs_name] = obs_scales_tensor
-                    else:
-                        self.obs_scales[obs_name] = obs_scale_value
-                else:
-                    self.obs_scales[obs_name] = 1.0
-            else:
-                # It's a dict, use the original approach
-                if isinstance(self.cfg.normalization.obs_scales.get(obs_name, 1), dict):
-                    obs_scales_tensor = torch.zeros(
-                        self.num_dof, device=self.device, dtype=torch.float
-                    )
-                    for idx, joint_name in enumerate(self.dof_names):
-                        for (
-                            joint_type,
-                            obs_scale,
-                        ) in self.cfg.normalization.obs_scales.get(obs_name).items():
-                            if joint_type in joint_name:
-                                obs_scales_tensor[idx] = obs_scale
-                    self.obs_scales[obs_name] = obs_scales_tensor
-                else:
-                    self.obs_scales[obs_name] = self.cfg.normalization.obs_scales.get(
-                        obs_name, 1
-                    )
-        
         # Initialize episode length
         self.max_episode_length_s = self.cfg.env.episode_length_s
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
@@ -301,9 +260,67 @@ class SphericalRobot(EnvBase):
             self.dof_vel_limits[i] = dof_props["velocity"][i].item()
             self.torque_limits[i] = dof_props["effort"][i].item()
             
+        # Initialize observation scales
+        self.obs_scales = {}
+        for obs_name in self.cfg.env.obs_list:
+            # Handle the case where obs_scales is a class instead of a dict
+            if hasattr(self.cfg.normalization.obs_scales, '__dict__'):
+                # It's a class, get the attribute directly
+                if hasattr(self.cfg.normalization.obs_scales, obs_name):
+                    obs_scale_value = getattr(self.cfg.normalization.obs_scales, obs_name)
+                    if isinstance(obs_scale_value, list):
+                        obs_scales_tensor = torch.zeros(
+                            self.num_dof, device=self.device, dtype=torch.float
+                        )
+                        # For list values, we need to map them to joints
+                        for idx, joint_name in enumerate(self.dof_names):
+                            # Simple mapping: use the first value for all joints for now
+                            # You might want to customize this mapping based on your needs
+                            obs_scales_tensor[idx] = obs_scale_value[0] if obs_scale_value else 1.0
+                        self.obs_scales[obs_name] = obs_scales_tensor
+                    else:
+                        self.obs_scales[obs_name] = obs_scale_value
+                else:
+                    self.obs_scales[obs_name] = 1.0
+            else:
+                # It's a dict, use the original approach
+                if isinstance(self.cfg.normalization.obs_scales.get(obs_name, 1), dict):
+                    obs_scales_tensor = torch.zeros(
+                        self.num_dof, device=self.device, dtype=torch.float
+                    )
+                    for idx, joint_name in enumerate(self.dof_names):
+                        for (
+                            joint_type,
+                            obs_scale,
+                        ) in self.cfg.normalization.obs_scales.get(obs_name).items():
+                            if joint_type in joint_name:
+                                obs_scales_tensor[idx] = obs_scale
+                    self.obs_scales[obs_name] = obs_scales_tensor
+                else:
+                    self.obs_scales[obs_name] = self.cfg.normalization.obs_scales.get(
+                        obs_name, 1
+                    )
+            
         # Initialize dictionaries (needed by wrappers)
         self.obs_dict = {}
         self.goal_dict = {}
+        
+        # Initialize velocity commands (needed by wrappers)
+        self.vel_commands = torch.zeros(
+            self.num_envs,
+            3,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )  # x vel, y vel, yaw vel
+        
+        # Initialize still commands (needed by wrappers)
+        self.still_commands = torch.zeros(
+            self.num_envs,
+            dtype=torch.bool,
+            device=self.device,
+            requires_grad=False,
+        )
 
     def compute_observations(self):
         """Compute observations for the policy."""
