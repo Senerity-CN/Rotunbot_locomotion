@@ -114,7 +114,7 @@ class ConfigRotunbot(ConfigLeggedRobot):
             ang_vel = [1.25, 1.25, 1.43]
             dof_pos = 2.0
             dof_vel = [0.125, 0.4]
-            command = [1.0, 2.0]
+            commands = [1.0, 2.0]
         clip_observations = 100.
         clip_actions = 50.
 

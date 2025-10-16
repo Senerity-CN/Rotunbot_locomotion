@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 
@@ -325,7 +326,7 @@ class SphericalRobot(EnvBase):
     def compute_observations(self):
         """Compute observations for the policy."""
         # Create observation dictionary with proper structure
-        non_lagged_obs_dict = {
+        obs_data = {
             "commands": self.commands * self.obs_scales.get("commands", 1),
             "base_quat": self.base_quat * self.obs_scales.get("base_quat", 1),
             "base_lin_vel": self.base_lin_vel * self.obs_scales.get("base_lin_vel", 1),
@@ -338,8 +339,17 @@ class SphericalRobot(EnvBase):
             "actions": self.actions * self.obs_scales.get("actions", 1),
         }
         
+        # Structure expected by wrapper: before_reset and after_reset
+        non_lagged_obs_dict = {
+            "before_reset": obs_data,
+            "after_reset": obs_data
+        }
+        
         # For spherical robot, we don't have lagged observations, so return empty dict
-        lagged_obs_dict = {}
+        lagged_obs_dict = {
+            "before_reset": {},
+            "after_reset": {}
+        }
 
         return {"non_lagged_obs": non_lagged_obs_dict, "lagged_obs": lagged_obs_dict}
 
@@ -349,6 +359,13 @@ class SphericalRobot(EnvBase):
         reward = self.rewards.compute_reward()
         self.rew_buf = reward
         return reward
+
+    def compute_goals(self):
+        """Compute goals for the policy."""
+        # For spherical robot, the goal is the commands
+        return {
+            "commands": self.commands
+        }
 
     def reset_idx(self, env_ids):
         """Reset environments."""
@@ -495,6 +512,9 @@ class SphericalRobot(EnvBase):
         self.obs_dict = self.compute_observations()
         self.compute_reward()
         self.check_termination()
+
+        # Compute goals
+        self.goal_dict = self.compute_goals()
 
         # Reset environments if needed
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
