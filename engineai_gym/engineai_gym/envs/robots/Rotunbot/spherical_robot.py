@@ -324,21 +324,24 @@ class SphericalRobot(EnvBase):
 
     def compute_observations(self):
         """Compute observations for the policy."""
-        # Create observation dictionary
-        obs_dict = {
-            "commands": self.commands,
-            "base_quat": self.base_quat,
-            "base_lin_vel": self.base_lin_vel,
-            "base_ang_vel": self.base_ang_vel,
-            "last_base_lin_vel": self.last_base_lin_vel,
-            "last_base_ang_vel": self.last_base_ang_vel,
-            "dof_pos": self.dof_pos,
-            "dof_vel": self.dof_vel,
-            "projected_gravity": self.projected_gravity,
-            "actions": self.actions,
+        # Create observation dictionary with proper structure
+        non_lagged_obs_dict = {
+            "commands": self.commands * self.obs_scales.get("commands", 1),
+            "base_quat": self.base_quat * self.obs_scales.get("base_quat", 1),
+            "base_lin_vel": self.base_lin_vel * self.obs_scales.get("base_lin_vel", 1),
+            "base_ang_vel": self.base_ang_vel * self.obs_scales.get("base_ang_vel", 1),
+            "last_base_lin_vel": self.last_base_lin_vel * self.obs_scales.get("last_base_lin_vel", 1),
+            "last_base_ang_vel": self.last_base_ang_vel * self.obs_scales.get("last_base_ang_vel", 1),
+            "dof_pos": self.dof_pos * self.obs_scales.get("dof_pos", 1),
+            "dof_vel": self.dof_vel * self.obs_scales.get("dof_vel", 1),
+            "projected_gravity": self.projected_gravity * self.obs_scales.get("projected_gravity", 1),
+            "actions": self.actions * self.obs_scales.get("actions", 1),
         }
+        
+        # For spherical robot, we don't have lagged observations, so return empty dict
+        lagged_obs_dict = {}
 
-        return obs_dict
+        return {"non_lagged_obs": non_lagged_obs_dict, "lagged_obs": lagged_obs_dict}
 
     def compute_reward(self):
         """Compute reward for current step."""
@@ -529,3 +532,28 @@ class SphericalRobot(EnvBase):
         noise_vec[19:21] = noise_scales.dof_vel * noise_level
         noise_vec[21:26] = 0.  # previous actions
         return noise_vec
+
+    def step(self, actions):
+        """Apply actions, simulate, call self.post_physics_step()
+
+        Args:
+            actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
+        """
+        # Clip actions
+        clip_actions = self.cfg.normalization.clip_actions
+        self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+        
+        # Step physics and render each frame
+        self.render()
+        for _ in range(self.cfg.control.decimation):
+            self.pre_physics_step(self.actions)
+            self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+            self.gym.set_dof_actuation_force_tensor(
+                self.sim, gymtorch.unwrap_tensor(self.torques)
+            )
+            self.gym.simulate(self.sim)
+            self.gym.fetch_results(self.sim, True)
+            self.gym.refresh_dof_state_tensor(self.sim)
+            self.post_physics_step()
+
+        return self.obs_dict, self.goal_dict, self.rew_buf, self.reset_buf, self.extras
