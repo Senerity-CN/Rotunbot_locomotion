@@ -241,7 +241,9 @@ class SphericalRobot(EnvBase):
         self.common_step_counter = 0
         self.extras = {}
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
-        self.gravity_vec = to_torch([0., 0., -1.], device=self.device).repeat((self.num_envs, 1))
+        # Adapt gravity according to up axis
+        self.up_axis_idx = 2  # 2 for z, 1 for y -> adapt gravity accordingly
+        self.gravity_vec = to_torch(get_axis_params(-9.81, self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         
         # Initialize base velocity and other required attributes
         self.base_quat = self.root_states[:, 3:7]
@@ -461,14 +463,14 @@ class SphericalRobot(EnvBase):
         self.last_base_lin_vel = self.base_lin_vel.clone()
         self.last_base_ang_vel = self.base_ang_vel.clone()
 
-        # Scale actions
-        self.actions = actions * self.cfg.control.action_scale
-
-        # Compute torques based on control type
-        self.torques = self._compute_torques(self.actions).view(self.torques.shape)
-
-        # Apply forces to joints
-        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+        # Scale actions for P and V control
+        if self.cfg.control.control_type == "P and V":
+            self.actions = torch.zeros_like(actions)
+            self.actions[:, 0] = actions[:, 0] * self.cfg.control.first_actionScale
+            self.actions[:, 1] = actions[:, 1] * self.cfg.control.second_actionScale
+        else:
+            # Scale actions
+            self.actions = actions * self.cfg.control.action_scale
 
     def _compute_torques(self, actions):
         """Compute torques from actions using P and V control.
@@ -581,6 +583,6 @@ class SphericalRobot(EnvBase):
             self.gym.simulate(self.sim)
             self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
-            self.post_physics_step()
+        self.post_physics_step()
 
         return self.obs_dict, self.goal_dict, self.rew_buf, self.reset_buf, self.extras
