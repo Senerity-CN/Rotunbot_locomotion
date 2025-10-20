@@ -65,6 +65,47 @@ class SphericalRobot(LeggedRobot):
         self.asset_file = self.cfg.asset.file.format(
             ENGINEAI_GYM_PACKAGE_DIR=os.getenv("ENGINEAI_GYM_PACKAGE_DIR", "")
         )
+        
+        # Initialize observation scales (needed by LeggedRobot)
+        self.obs_scales = {}
+        for obs_name in self.cfg.env.obs_list:
+            # Handle the case where obs_scales is a class instead of a dict
+            if hasattr(self.cfg.normalization.obs_scales, '__dict__'):
+                # It's a class, get the attribute directly
+                if hasattr(self.cfg.normalization.obs_scales, obs_name):
+                    obs_scale_value = getattr(self.cfg.normalization.obs_scales, obs_name)
+                    if isinstance(obs_scale_value, list):
+                        obs_scales_tensor = torch.zeros(
+                            self.num_dofs, device=self.device, dtype=torch.float
+                        )
+                        # For list values, we need to map them to joints
+                        for idx, joint_name in enumerate(self.dof_names):
+                            # Simple mapping: use the first value for all joints for now
+                            # You might want to customize this mapping based on your needs
+                            obs_scales_tensor[idx] = obs_scale_value[0] if obs_scale_value else 1.0
+                        self.obs_scales[obs_name] = obs_scales_tensor
+                    else:
+                        self.obs_scales[obs_name] = obs_scale_value
+                else:
+                    self.obs_scales[obs_name] = 1.0
+            else:
+                # It's a dict, use the original approach
+                if isinstance(self.cfg.normalization.obs_scales.get(obs_name, 1), dict):
+                    obs_scales_tensor = torch.zeros(
+                        self.num_dofs, device=self.device, dtype=torch.float
+                    )
+                    for idx, joint_name in enumerate(self.dof_names):
+                        for (
+                            joint_type,
+                            obs_scale,
+                        ) in self.cfg.normalization.obs_scales.get(obs_name).items():
+                            if joint_type in joint_name:
+                                obs_scales_tensor[idx] = obs_scale
+                    self.obs_scales[obs_name] = obs_scales_tensor
+                else:
+                    self.obs_scales[obs_name] = self.cfg.normalization.obs_scales.get(
+                        obs_name, 1
+                    )
 
     def _create_envs(self):
         """Create robot environments."""

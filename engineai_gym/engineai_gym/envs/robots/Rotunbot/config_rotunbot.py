@@ -55,7 +55,7 @@ class ConfigRotunbot(ConfigLeggedRobot):
 
     class init_state(ConfigLeggedRobot.env):
         # Initial state of the robot
-        pos = [0.0, 0.0, 0.5]  # x,y,z [m]
+        pos = [0.0, 0.0, 0.4]  # x,y,z [m]
         rot = [0.7071, 0.0, 0.0, 0.7071]  # x,y,z,w [quat] - Compensate for -90 degree rotation around X axis in URDF
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
@@ -181,3 +181,5 @@ class ConfigRotunbot(ConfigLeggedRobot):
         max_linear_velocity = 1000.0
         armature = 0.0
         thickness = 0.01
+        # Half of the sphere radius for foot height tracking
+        foot_half_z_size = 0.2
