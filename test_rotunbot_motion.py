@@ -6,10 +6,10 @@ This script loads the Rotunbot and applies a fixed velocity to link1 while keepi
 """
 
 import os
-import torch
 import numpy as np
 from isaacgym import gymapi, gymtorch
 from engineai_gym.envs.robots.Rotunbot.config_rotunbot import ConfigRotunbot
+import torch
 
 def main():
     # 初始化Gym
@@ -35,7 +35,7 @@ def main():
     gym.add_ground(sim, plane_params)
     
     # 加载Rotunbot资产
-    asset_root = "/Users/balance/Rotunbot_locomotion/engineai_gym/resources/robots/Rotunbot/urdf"
+    asset_root = "/home/balance/Rotunbot_locomotion/engineai_gym/resources/robots/Rotunbot/urdf"
     asset_file = "ball.urdf"
     
     asset_options = gymapi.AssetOptions()
@@ -106,7 +106,7 @@ def main():
         frame_count = 0
         while True:
             # 每100帧打印一次状态
-            if frame_count % 100 == 0:
+            if frame_count % 10000 == 0:
                 gym.refresh_dof_state_tensor(sim)
                 gym.refresh_actor_root_state_tensor(sim)
                 
