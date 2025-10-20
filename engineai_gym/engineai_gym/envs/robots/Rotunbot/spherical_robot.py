@@ -44,6 +44,12 @@ class SphericalRobot(LeggedRobot):
             sim_device,
             headless,
         )
+        
+        # 添加球形机器人特有的状态变量
+        self.last_base_lin_vel = torch.zeros_like(self.base_lin_vel)
+        self.last_base_ang_vel = torch.zeros_like(self.base_ang_vel)
+        self.step_counter = 0
+        self.t = 0
 
     def _parse_cfg(self):
         """Parse configuration parameters."""
@@ -141,19 +147,145 @@ class SphericalRobot(LeggedRobot):
         self.min_joint_armature = torch.zeros(self.num_dofs, dtype=torch.float, device=self.device)
 
     def _resample_commands(self, env_ids):
-        """Resample movement commands."""
-        # Sample linear velocity commands
-        self.commands[env_ids, 0] = torch_rand_float(
-            self.command_x_range[0], self.command_x_range[1], (len(env_ids), 1), device=self.device
-        ).squeeze()
+        """Resample movement commands for spherical robot."""
+        if self.t < 200:
+            self.commands[env_ids, 0] = self.t / 200
+        else:
+            self.commands[env_ids, 0] = 1
+        
+        self.t = self.t + 1
 
-        # Sample angular velocity commands
-        self.commands[env_ids, 1] = torch_rand_float(
-            self.command_yaw_range[0], self.command_yaw_range[1], (len(env_ids), 1), device=self.device
-        ).squeeze()
+        # 目标角速度
+        target_ang_vel_yaw = 0
 
-    def pre_physics_step(self, actions):
-        """Process actions before physics step."""
+        # 当前角速度
+        current_ang_vel_yaw = self.base_ang_vel[env_ids, 2]
+
+        # 限制每次更新的最大变化幅度
+        max_delta = 0.1  # 最大变化幅度
+        delta = target_ang_vel_yaw - current_ang_vel_yaw
+        delta = torch.clamp(delta, min=-max_delta, max=max_delta)  # 限制变化幅度
+
+        # 更新角速度指令
+        self.commands[env_ids, 1] = current_ang_vel_yaw + delta
+
+        # 限制角速度指令
+        yaw_limit = torch.abs(self.commands[env_ids, 0]/2)
+        for i in range(len(env_ids)):
+            if self.commands[env_ids[i], 1] > yaw_limit[i]:
+                self.commands[env_ids[i], 1] = yaw_limit[i]
+            if self.commands[env_ids[i], 1] < -yaw_limit[i]:
+                self.commands[env_ids[i], 1] = -yaw_limit[i]
+
+    def post_physics_step(self):
+        """Check terminations, compute observations and rewards
+        calls self._post_physics_step_callback() for common computations 
+        calls self._draw_debug_vis() if needed
+        """
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
+
+        self.episode_length_buf += 1
+        self.common_step_counter += 1
+
+        # prepare quantities
+        self.base_quat[:] = self.root_states[:, 3:7]
+        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
+        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+
+        self._post_physics_step_callback()
+
+        # compute observations, rewards, resets, ...
+        self.check_termination()
+        self.compute_reward()
+        env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        self.reset_idx(env_ids)
+        
+        # Compute observations after reset
+        self.obs_dict = self.compute_observations()
+        self.goal_dict = self.compute_goals()
+
+        # Update last states
+        self.last_actions[:] = self.actions[:]
+        self.last_base_lin_vel = self.base_lin_vel.clone()
+        self.last_base_ang_vel = self.base_ang_vel.clone()
+        self.last_dof_vel = self.dof_vel.clone()
+        self.last_root_vel[:] = self.root_states[:, 7:13]
+
+        if self.viewer and self.enable_viewer_sync and self.debug_viz:
+            self._draw_debug_vis()
+
+    def compute_observations(self):
+        """Computes observations for the spherical robot"""
+        obs_dict = {}
+        
+        # 1. commands (线速度和角速度)
+        command_scales_tensor = torch.tensor(self.obs_scales.get("commands", [1.0, 2.0]), device=self.device, dtype=self.commands.dtype)
+        scaled_commands = self.commands[:, :2] * command_scales_tensor
+        obs_dict["commands"] = scaled_commands
+        
+        # 2. base_quat (基座四元数)
+        obs_dict["base_quat"] = self.base_quat
+        
+        # 3. base_lin_vel (线速度)
+        lin_vel_scales_tensor = torch.tensor(self.obs_scales.get("base_lin_vel", [0.67, 3.33, 20.0]), device=self.device, dtype=self.base_lin_vel.dtype)
+        scaled_base_lin_vel = self.base_lin_vel * lin_vel_scales_tensor
+        obs_dict["base_lin_vel"] = scaled_base_lin_vel
+        
+        # 4. base_ang_vel (角速度)
+        ang_vel_scales_tensor = torch.tensor(self.obs_scales.get("base_ang_vel", [1.25, 1.25, 1.43]), device=self.device, dtype=self.base_ang_vel.dtype)
+        scaled_base_ang_vel = self.base_ang_vel * ang_vel_scales_tensor
+        obs_dict["base_ang_vel"] = scaled_base_ang_vel
+        
+        # 5. last_base_lin_vel (上一时刻线速度)
+        scaled_last_base_lin_vel = self.last_base_lin_vel * lin_vel_scales_tensor
+        obs_dict["last_base_lin_vel"] = scaled_last_base_lin_vel
+        
+        # 6. last_base_ang_vel (上一时刻角速度)
+        scaled_last_base_ang_vel = self.last_base_ang_vel * ang_vel_scales_tensor
+        obs_dict["last_base_ang_vel"] = scaled_last_base_ang_vel
+        
+        # 7. dof_pos (电机角度 - 副轴)
+        # For spherical robot, we only use the second joint (steering)
+        scaled_dof_pos = (self.dof_pos[:, 1:2] - self.default_dof_pos[:, 1:2]) * self.obs_scales.get("dof_pos", 2.0)
+        obs_dict["dof_pos"] = scaled_dof_pos
+        
+        # 8. dof_vel (电机速度)
+        dof_vel_scales_tensor = torch.tensor(self.obs_scales.get("dof_vel", [0.125, 0.4]), device=self.device, dtype=self.dof_vel.dtype)
+        scaled_dof_vel = self.dof_vel * dof_vel_scales_tensor
+        obs_dict["dof_vel"] = scaled_dof_vel
+        
+        # 9. projected_gravity (重力)
+        obs_dict["projected_gravity"] = self.projected_gravity
+        
+        # 10. actions (动作历史)
+        obs_dict["actions"] = self.actions
+        
+        return {"non_lagged_obs": obs_dict, "lagged_obs": {}}
+
+    def step(self, actions):
+        """Apply actions, simulate, call self.post_physics_step()
+
+        Args:
+            actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
+        """
+        self.step_counter += 1
+        
+        # Clip actions
+        clip_actions = self.cfg.normalization.clip_actions
+        self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+        
+        # Scale actions for P and V control
+        if self.cfg.control.control_type == "P and V":
+            actions_scaled = torch.zeros_like(actions)
+            actions_scaled[:, 0] = torch.clip(actions[:, 0], -8, 8) * self.cfg.control.first_actionScale
+            actions_scaled[:, 1] = torch.clip(actions[:, 1], -0.5236, 0.5236) * self.cfg.control.second_actionScale
+            self.actions = actions_scaled
+        else:
+            # Scale actions
+            self.actions = actions * self.cfg.control.action_scale
+            
         # Store last states
         self.last_actions = self.actions.clone()
         self.last_dof_vel = self.dof_vel.clone()
@@ -161,17 +293,26 @@ class SphericalRobot(LeggedRobot):
         self.last_base_lin_vel = self.base_lin_vel.clone()
         self.last_base_ang_vel = self.base_ang_vel.clone()
 
-        # Scale actions for P and V control
-        if self.cfg.control.control_type == "P and V":
-            self.actions = torch.zeros_like(actions)
-            self.actions[:, 0] = actions[:, 0] * self.cfg.control.first_actionScale
-            self.actions[:, 1] = actions[:, 1] * self.cfg.control.second_actionScale
-        else:
-            # Scale actions
-            self.actions = actions * self.cfg.control.action_scale
+        # step physics and render each frame
+        self.render()
+        for _ in range(self.cfg.control.decimation):
+            self.torques = self._compute_torques().view(self.torques.shape)
+            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+            self.gym.simulate(self.sim)
+            if self.device == 'cpu':
+                self.gym.fetch_results(self.sim, True)
+            self.gym.refresh_dof_state_tensor(self.sim)
+        
+        self.post_physics_step()
+        
+        # return clipped obs, clipped states (None), rewards, dones and infos
+        clip_obs = self.cfg.normalization.clip_observations
+        # Since we don't have obs_buf in this implementation, we'll return the observation dict
+        # In a real implementation, you would process the observations here
+        return self.obs_dict, self.goal_dict, self.rew_buf, self.reset_buf, self.extras
 
     def _compute_torques(self):
-        """Compute torques from actions using P and V control.
+        """Compute torques from actions for spherical robot using P and V control.
 
         Returns:
             torch.Tensor: Torques sent to the simulation
@@ -213,7 +354,7 @@ class SphericalRobot(LeggedRobot):
                 - coulomb_friction
             )
         elif control_type == "T":
-            torques = deepcopy(self.controller_input)
+            torques = self.controller_input.clone()
         elif control_type == "P and V":
             # For spherical robot, we have two joints with different control strategies
             torques = torch.zeros_like(self.dof_pos)
@@ -229,3 +370,22 @@ class SphericalRobot(LeggedRobot):
             torque_multi = 1
         torques *= torque_multi
         return torch.clip(torques, -self.torque_limits, self.torque_limits)
+
+    # ------------ reward functions ----------------
+    def _reward_tracking_lin_vel(self):
+        # Tracking of linear velocity commands (xyz axes)
+        error_x = self.commands[:, 0] - self.base_lin_vel[:, 0]
+        error_y = self.base_lin_vel[:, 1]  # 实际侧向速度，目标为0
+        error_z = self.base_lin_vel[:, 2]  # 实际垂直速度，目标为0 (可选)
+
+        # 计算总的平方误差
+        lin_vel_error = torch.square(error_x) + torch.square(error_y) + torch.square(error_z)
+        return torch.exp(-lin_vel_error / self.cfg.rewards.tracking_lin_vel_sigma)
+
+    def _reward_tracking_ang_vel(self):
+        # Tracking of angular velocity commands (yaw)
+        target_yaw_vel = self.commands[:, 1]
+        actual_yaw_vel = self.base_ang_vel[:, 2]
+
+        ang_vel_error = torch.square(target_yaw_vel - actual_yaw_vel)
+        return torch.exp(-ang_vel_error / self.cfg.rewards.tracking_ang_vel_sigma)
