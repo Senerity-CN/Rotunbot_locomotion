@@ -78,6 +78,7 @@ class ConfigRotunbot(ConfigLeggedRobot):
         action_scale = 20
         first_actionScale = 8
         second_actionScale = 0.5236
+        action_scales = {'joint1': 0.5, 'joint2': 0.5}  # 添加这行来修复错误
         
         # Decimation factor: Number of control action updates @ sim DT per policy DT
         decimation = 4
