@@ -54,9 +54,6 @@ class SphericalRobot(LeggedRobot):
 
     def _parse_cfg(self):
         """Parse configuration parameters."""
-        # Call parent class method first
-        super()._parse_cfg()
-        
         # Initialize command ranges
         self.command_x_range = self.cfg.commands.ranges.lin_vel_x
         self.command_y_range = self.cfg.commands.ranges.lin_vel_y
@@ -91,9 +88,12 @@ class SphericalRobot(LeggedRobot):
         robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
 
         # Get asset information
-        self.num_dof = self.gym.get_asset_dof_count(robot_asset)
+        self.num_dofs = self.gym.get_asset_dof_count(robot_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         self.dof_names = self.gym.get_asset_dof_names(robot_asset)
+        
+        # Set num_dof for compatibility with LeggedRobot
+        self.num_dof = self.num_dofs
 
         # Prepare environment creation
         env_lower = gymapi.Vec3(-self.cfg.env.env_spacing, -self.cfg.env.env_spacing, 0.0)
@@ -110,7 +110,8 @@ class SphericalRobot(LeggedRobot):
             # Set initial pose
             start_pose = gymapi.Transform()
             start_pose.p = gymapi.Vec3(*self.cfg.init_state.pos)
-            # Don't set rotation to use default orientation
+            # Set rotation from config
+            start_pose.r = gymapi.Quat(*self.cfg.init_state.rot)
 
             # Create actor
             actor_handle = self.gym.create_actor(env_ptr, robot_asset, start_pose, "rotunbot", i, 0, 0)
@@ -138,6 +139,15 @@ class SphericalRobot(LeggedRobot):
         self.foot_indices[0] = self.gym.find_actor_rigid_body_handle(
             self.envs[0], self.actor_handles[0], "link1"
         )
+        
+        # Set action joint indices for compatibility with LeggedRobot
+        self.action_joint_indices = list(range(len(self.cfg.env.action_joints)))
+        
+        # Set body names for compatibility with LeggedRobot
+        self.body_names = self.gym.get_asset_rigid_body_names(robot_asset)
+        
+        # Initialize min_joint_armature for compatibility with LeggedRobot
+        self.min_joint_armature = torch.zeros(self.num_dofs, dtype=torch.float, device=self.device)
 
     def _resample_commands(self, env_ids):
         """Resample movement commands."""
