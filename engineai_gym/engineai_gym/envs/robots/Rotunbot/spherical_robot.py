@@ -4,12 +4,12 @@ import numpy as np
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 
-from engineai_gym.envs.base.env_base import EnvBase
+from engineai_gym.envs.base.legged_robot import LeggedRobot
 from engineai_rl_lib.math import quat_apply_yaw, wrap_to_pi, get_euler_xyz_tensor
 from .config_rotunbot import ConfigRotunbot
 
 
-class SphericalRobot(EnvBase):
+class SphericalRobot(LeggedRobot):
     """Spherical robot environment for locomotion training."""
 
     def __init__(
@@ -33,16 +33,10 @@ class SphericalRobot(EnvBase):
             sim_device (str): Simulation device
             headless (bool): Whether to run in headless mode
         """
-        self.cfg = cfg
-        self.sim_params = sim_params
-        self.height_samples = None
-        self.debug_viz = False
-        self.init_done = False
-
-        # Parse configuration
-        self._parse_cfg()
-
-        # Initialize base environment
+        # Parse configuration first
+        self._parse_cfg(cfg)
+        
+        # Initialize base environment using LeggedRobot
         super().__init__(
             obs_class,
             goal_class,
@@ -54,18 +48,16 @@ class SphericalRobot(EnvBase):
             sim_device,
             headless,
         )
-
-        # Initialize buffers after simulation is created
-        self._init_buffers()
         
-        # Create action_scales property for compatibility with wrappers
-        self.action_scales = {
-            "joint1": self.cfg.control.first_actionScale,
-            "joint2": self.cfg.control.second_actionScale
-        }
+        # Override action_scales for compatibility with wrappers
+        self.action_scales = torch.tensor([
+            self.cfg.control.first_actionScale,
+            self.cfg.control.second_actionScale
+        ], device=self.device)
 
-    def _parse_cfg(self):
+    def _parse_cfg(self, cfg):
         """Parse configuration parameters."""
+        self.cfg = cfg
         # Initialize command ranges
         self.command_x_range = self.cfg.commands.ranges.lin_vel_x
         self.command_y_range = self.cfg.commands.ranges.lin_vel_y
@@ -148,12 +140,7 @@ class SphericalRobot(EnvBase):
             # Set initial pose
             start_pose = gymapi.Transform()
             start_pose.p = gymapi.Vec3(*self.cfg.init_state.pos)
-            # Normalize quaternion to ensure valid rotation
-            rot_quat = self.cfg.init_state.rot
-            rot_norm = np.linalg.norm(rot_quat)
-            if rot_norm > 0:
-                rot_quat = [q / rot_norm for q in rot_quat]
-            start_pose.r = gymapi.Quat(*rot_quat)
+            # Don't set rotation to use default orientation
 
             # Create actor
             actor_handle = self.gym.create_actor(env_ptr, robot_asset, start_pose, "rotunbot", i, 0, 0)
