@@ -185,3 +185,5 @@ class ConfigRotunbot(ConfigLeggedRobot):
         thickness = 0.01
         # Half of the sphere radius for foot height tracking
         foot_half_z_size = 0.2
+        # Fix the base of the robot (for spherical robot, should be False to allow movement)
+        fix_base_link = False

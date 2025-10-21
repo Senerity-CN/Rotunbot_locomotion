@@ -50,6 +50,15 @@ class SphericalRobot(LeggedRobot):
         self.last_base_ang_vel = torch.zeros_like(self.base_ang_vel)
         self.step_counter = 0
         self.t = 0
+        
+        # Initialize commands tensor for spherical robot (linear velocity and angular velocity)
+        self.commands = torch.zeros(
+            self.num_envs, 
+            self.cfg.commands.num_commands, 
+            dtype=torch.float, 
+            device=self.device, 
+            requires_grad=False
+        )
 
     def _parse_cfg(self):
         """Parse configuration parameters."""
@@ -184,6 +193,72 @@ class SphericalRobot(LeggedRobot):
         
         # Initialize min_joint_armature for compatibility with LeggedRobot
         self.min_joint_armature = torch.zeros(self.num_dofs, dtype=torch.float, device=self.device)
+        
+        # Initialize base_init_state (required by reset functionality)
+        base_init_state_list = (
+            self.cfg.init_state.pos
+            + self.cfg.init_state.rot
+            + self.cfg.init_state.lin_vel
+            + self.cfg.init_state.ang_vel
+        )
+        self.base_init_state = to_torch(
+            base_init_state_list, device=self.device, requires_grad=False
+        )
+        
+        # Initialize environment origins (required by reset functionality)
+        self.custom_origins = False
+        self.env_origins = torch.zeros(
+            self.num_envs, 3, device=self.device, requires_grad=False
+        )
+        
+        # Initialize PD gains (required by _compute_torques method)
+        self.p_gains = torch.zeros(
+            self.num_envs,
+            self.num_dofs,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.d_gains = torch.zeros(
+            self.num_envs,
+            self.num_dofs,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        
+        # Set PD gains from configuration
+        for i in range(self.num_dofs):
+            name = self.dof_names[i]
+            found = False
+            for dof_name in self.cfg.control.stiffness.keys():
+                if dof_name in name:
+                    self.p_gains[:, i] = self.cfg.control.stiffness[dof_name]
+                    self.d_gains[:, i] = self.cfg.control.damping[dof_name]
+                    found = True
+                    break
+            if not found:
+                self.p_gains[:, i] = 0.0
+                self.d_gains[:, i] = 0.0
+                if self.cfg.control.control_type in ["P", "V", "P and V"]:
+                    print(f"PD gain of joint {name} were not defined, setting them to zero")
+        
+        # Initialize default_dof_pos (required by _compute_torques method)
+        self.default_dof_pos = torch.zeros(
+            self.num_dofs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        for i in range(self.num_dofs):
+            name = self.dof_names[i]
+            if name in self.cfg.init_state.default_joint_angles:
+                self.default_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
+        
+        # Initialize action_scales (required by _compute_torques method)
+        self.action_scales = torch.ones(
+            self.num_dofs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        # Set action scales from configuration if available
+        if hasattr(self.cfg.control, 'action_scale'):
+            self.action_scales *= self.cfg.control.action_scale
 
     def _resample_commands(self, env_ids):
         """Resample movement commands for spherical robot."""
@@ -398,9 +473,9 @@ class SphericalRobot(LeggedRobot):
             # For spherical robot, we have two joints with different control strategies
             torques = torch.zeros_like(self.dof_pos)
             # First joint (driving): velocity control
-            torques[:, 0] = self.p_gains[0] * (actions_scaled[:, 0] - self.dof_vel[:, 0]) - self.d_gains[0] * (self.dof_vel[:, 0] - self.last_dof_vel[:, 0]) / self.sim_params.dt
+            torques[:, 0] = self.p_gains[:, 0] * (actions_scaled[:, 0] - self.dof_vel[:, 0]) - self.d_gains[:, 0] * (self.dof_vel[:, 0] - self.last_dof_vel[:, 0]) / self.sim_params.dt
             # Second joint (steering): position control
-            torques[:, 1] = self.p_gains[1] * (actions_scaled[:, 1] + self.default_dof_pos[:, 1] - self.dof_pos[:, 1]) - self.d_gains[1] * self.dof_vel[:, 1]
+            torques[:, 1] = self.p_gains[:, 1] * (actions_scaled[:, 1] + self.default_dof_pos[1] - self.dof_pos[:, 1]) - self.d_gains[:, 1] * self.dof_vel[:, 1]
         else:
             raise NameError(f"Unknown controller type: {control_type}")
         try:
