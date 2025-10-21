@@ -152,7 +152,7 @@ class ConfigRotunbot(ConfigLeggedRobot):
         tracking_ang_vel_sigma = 0.1
 
     class asset(ConfigLeggedRobot.env):
-        file = "/home/balance/Rotunbot_locomotion/engineai_gym/resources/robots/Rotunbot/urdf/ball.urdf"
+        file = "/home/balance/Rotunbot_locomotion/engineai_gym/engineai_gym/resources/Rotunbot/urdf/ball.urdf"
         name = "rotunbot"
         # Whether to use self-collisions
         self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
