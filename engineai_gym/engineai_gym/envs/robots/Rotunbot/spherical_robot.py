@@ -130,6 +130,45 @@ class SphericalRobot(LeggedRobot):
             # Add environment to list
             self.envs.append(env_ptr)
         
+        # Initialize DOF limits and properties (required by wrappers)
+        if self.num_envs > 0:
+            # Get DOF properties from the first environment
+            props = self.gym.get_actor_dof_properties(self.envs[0], self.actor_handles[0])
+            
+            # Initialize DOF limits tensors
+            self.dof_pos_limits = torch.zeros(
+                self.num_dofs,
+                2,
+                dtype=torch.float,
+                device=self.device,
+                requires_grad=False,
+            )
+            self.dof_vel_limits = torch.zeros(
+                self.num_dofs,
+                dtype=torch.float,
+                device=self.device,
+                requires_grad=False,
+            )
+            self.torque_limits = torch.zeros(
+                self.num_dofs,
+                dtype=torch.float,
+                device=self.device,
+                requires_grad=False,
+            )
+            
+            # Set DOF limits from properties
+            for i in range(len(props)):
+                self.dof_pos_limits[i, 0] = props["lower"][i].item()
+                self.dof_pos_limits[i, 1] = props["upper"][i].item()
+                self.dof_vel_limits[i] = props["velocity"][i].item()
+                self.torque_limits[i] = props["effort"][i].item()
+                
+                # Apply torque limit multipliers if configured
+                if self.cfg.safety.torque_hard_limit_multi is not None:
+                    for dof_type in self.cfg.safety.torque_hard_limit_multi:
+                        if dof_type in self.dof_names[i]:
+                            self.torque_limits[i] *= self.cfg.safety.torque_hard_limit_multi[dof_type]
+        
         # Initialize foot indices (needed by wrappers)
         # For spherical robot, we use link1 as the foot
         self.foot_indices = torch.zeros(1, dtype=torch.long, device=self.device)
